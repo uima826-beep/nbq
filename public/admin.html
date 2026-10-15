@@ -419,8 +419,8 @@ body.pop-open{overflow:hidden}
         <table>
           <thead>
             <tr>
-              <th>نوع البطاقة</th>
               <th>الساعة</th>
+              <th>نوع البطاقة</th>
               <th>الاسم</th>
               <th>رقم الجوال</th>
               <th>الحالة</th>
@@ -642,8 +642,8 @@ function render(){
     const watch = WATCHES.find(w => w.id === o.watch);
     const region = `${emName(o.em) || "—"}${o.a ? ` / ${areaName(o.em, o.a) || "—"}` : ""}`;
     return `<tr class="${o.status === "awaiting" ? "await-row" : ""}">
-      <td><div class="cardcell">${card ? `<img src="${card.img}" alt="">` : ""}<span>${card ? card.ar : (o.cardName || o.card)}</span></div></td>
       <td>${watch ? `<div class="watchcell"><img src="${watch.img}" alt=""><span>${watch.ar}</span></div>` : (o.watchName || "—")}</td>
+      <td><div class="cardcell">${card ? `<img src="${card.img}" alt="">` : ""}<span>${card ? card.ar : (o.cardName || o.card)}</span></div></td>
       <td>${esc(o.n)} ${badgeFor(o.status)}${o.status === "awaiting" ? ` <span class="badge" style="background:var(--media);color:var(--muted)">${stepName(o.step)}</span>` : ""}</td>
       <td class="num">${fmtPhone(o.p)}</td>
       <td>${badgeFor(o.status)}</td>
