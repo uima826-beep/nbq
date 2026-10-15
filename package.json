@@ -1,8 +1,6 @@
 {
-  "name": "himyan-site",
+  "name": "qnb-site",
   "version": "1.0.0",
-  "description": "Himyan national payment card website (Arabic/English)",
-  "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "private": true,
   "engines": { "node": ">=18" }
 }
