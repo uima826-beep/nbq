@@ -5,9 +5,6 @@ const GIST_ID = process.env.GIST_ID || "dd7f9a54aff0608980d04c04360bf271";
 const GIST_TOKEN = process.env.GIST_TOKEN || "";
 
 let orders = [];
-let _lastRead = 0;
-let _lastWrite = 0;
-const READ_INTERVAL = 2000;
 const visitors = new Map();
 const ACTIVE_MS = 10000;
 
@@ -41,13 +38,11 @@ function gistRequest(method, body) {
 }
 
 async function loadFromGist() {
-  if (Date.now() - _lastRead < READ_INTERVAL) return;
   try {
     var g = await gistRequest("GET");
     if (g && g.files && g.files["orders.json"]) {
       var parsed = JSON.parse(g.files["orders.json"].content);
       orders = parsed.orders || [];
-      _lastRead = Date.now();
     }
   } catch(e) {}
 }
@@ -57,8 +52,6 @@ async function saveToGist() {
     await gistRequest("PATCH", {
       files: { "orders.json": { content: JSON.stringify({ orders: orders, updated: Date.now() }) } }
     });
-    _lastWrite = Date.now();
-    _lastRead = Date.now();
   } catch(e) {}
 }
 
