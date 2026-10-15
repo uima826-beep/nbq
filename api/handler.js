@@ -65,12 +65,10 @@ function cleanOrder(b) {
 
 module.exports = async function handler(req, res) {
   try {
-    const url = req.url.split("?")[0];
+    const fullUrl = req.headers["x-original-url"] || req.url || "";
+    const url = fullUrl.split("?")[0];
     const method = req.method;
-    const b = req.body || {};
-
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Cache-Control", "no-store");
+    const b = typeof req.body === "object" && req.body !== null ? req.body : {};
 
     if (method === "POST" && url === "/api/orders") {
       const o = cleanOrder(b);
