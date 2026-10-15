@@ -1,4 +1,4 @@
-// خادم فزعه: يعرض الصفحات + API للطلبات والزيارات النشطة (بدون مكتبات خارجية)
+// خادم بنك قطر الوطني: يعرض الصفحات + API للطلبات والزيارات النشطة (بدون مكتبات خارجية)
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -6,7 +6,7 @@ const path = require("path");
 const PORT = process.env.PORT || 3000;
 const ROOT = path.join(__dirname, "public");
 // كلمة مرور لوحة التحكم — غيّرها من متغيرات Railway (ADMIN_PASSWORD)
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "fazaa2026";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "qnb2026";
 // مكان حفظ الطلبات — على Railway اربط Volume واجعل DATA_DIR يشير إليه
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
@@ -218,4 +218,4 @@ http.createServer((req, res) => {
     res.writeHead(200, headers);
     res.end(data);
   });
-}).listen(PORT, () => console.log(`Fazaa site running on port ${PORT}`));
+}).listen(PORT, () => console.log(`QNB site running on port ${PORT}`));

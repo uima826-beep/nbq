@@ -1,4 +1,4 @@
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "fazaa2026";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "qnb2026";
 
 let orders = [];
 const visitors = new Map();
